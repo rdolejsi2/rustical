@@ -1,0 +1,8 @@
+[package]
+name = "homework-05"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+slug = "0.1.6"
+csv = "1.1"
