@@ -269,6 +269,6 @@ fn ensure_directory(directory: &str) {
             eprintln!("Failed to create storage directory: {}", e);
             std::process::exit(1);
         }
-        println!("Created directory: files/");
+        println!("Created directory: {}/", directory);
     }
 }
