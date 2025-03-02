@@ -1,0 +1,72 @@
+@startuml
+actor "User" as user
+boundary "Client" as client
+boundary "Server" as server
+
+group Server startup
+user -> server: cargo run --bin server
+server -> server: Bind to host/port
+server -> server ++ : Start listening
+end
+
+...
+
+group Client startup
+user -> client: cargo run --bin client
+client -> server: Connect to host/port
+client -> client++: Accept user input
+end
+
+...
+
+group Communication
+
+...//standard message sending//...
+
+user -> client++: send message
+client -> server++: send message
+server -> server: process message
+server -> client: send response
+deactivate server
+client -> user: send response
+deactivate client
+
+...//file / image sending//...
+
+user -> client++: send file message
+client -> client: read file
+client -> server++: send message\n+ file content
+server -> server: process message
+server -> server: convert content to\ntarget image format\n//(only for image command)//
+server -> server: store content\ninto filesystem
+server -> client: send response
+deactivate server
+client -> user: send response
+deactivate client
+end
+
+...
+
+group Client shutdown
+user -> client++: Ctrl+C
+client -> server++: Close connection
+server -> server: Stop connection\nhandling thread
+deactivate client
+client -> client: Shutdown
+deactivate client
+deactivate server
+end
+
+...
+
+group Server shutdown
+user -> server++: Ctrl+C
+server -> server: Stop listening
+deactivate server
+
+deactivate server
+
+server -> server: Shutdown
+end
+
+@enduml
