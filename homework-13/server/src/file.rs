@@ -3,6 +3,9 @@
 //! This module contains functions for handling the file storage on the server
 //! (file name deduction, receiving files, post-processing images).
 
+use crate::server_error::ServerError;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine;
 use chrono::{SecondsFormat, Utc};
 use common::log;
 use common::util::flush;
@@ -10,8 +13,7 @@ use image::{ImageFormat, ImageReader};
 use regex::Regex;
 use std::error::Error;
 use std::fs::File;
-use std::io::{BufReader, Cursor, Read, Write};
-use std::net::TcpStream;
+use std::io::{Cursor, Write};
 use std::path::Path;
 
 fn get_target_file(filename: &str, directory: &str) -> Result<String, Box<dyn Error>> {
@@ -31,48 +33,38 @@ fn get_target_file(filename: &str, directory: &str) -> Result<String, Box<dyn Er
 }
 
 pub(crate) fn store_file(
-    stream: &mut TcpStream,
-    input: &str,
-    directory: &str,
-    post_processor: Option<fn(&[u8], &str) -> Result<(Vec<u8>, String, bool), Box<dyn Error>>>,
-) -> Result<String, Box<dyn Error>> {
-    let mut parts = input.splitn(2, ' ');
-    let size = parts.next().unwrap().parse::<usize>()?;
-    let filename = parts.next().unwrap_or("");
-    log!("Receiving {} (size {})", filename, size);
-    receive_file(stream, filename, size, directory, post_processor)
-}
-
-fn receive_file(
-    stream: &mut TcpStream,
     filename: &str,
-    size: usize,
     directory: &str,
+    content: &str,
     post_processor: Option<fn(&[u8], &str) -> Result<(Vec<u8>, String, bool), Box<dyn Error>>>,
 ) -> Result<String, Box<dyn Error>> {
-    let mut reader = BufReader::new(stream);
-    let mut buffer = vec![0; size];
-    reader.read_exact(&mut buffer)?;
-
+    let buffer = BASE64
+        .decode(content)
+        .map_err(|e| ServerError::InvalidEncoding(e.to_string()))?;
     let target_file = get_target_file(filename, directory)?;
     if let Some(processor) = post_processor {
         let (target_buffer, new_target_file, converted) = processor(&buffer, &target_file)?;
         let mut target_file = File::create(new_target_file.clone())?;
         target_file.write_all(&target_buffer)?;
         if converted {
-            // let's get new file size
             let new_size = target_buffer.len();
             Ok(format!(
                 "Received {} bytes and converted to {} bytes in {}",
-                size, new_size, new_target_file
+                buffer.len(),
+                new_size,
+                new_target_file
             ))
         } else {
-            Ok(format!("Stored {} bytes in {}", size, new_target_file))
+            Ok(format!(
+                "Stored {} bytes in {}",
+                buffer.len(),
+                new_target_file
+            ))
         }
     } else {
         let mut file = File::create(target_file.clone())?;
         file.write_all(&buffer)?;
-        Ok(format!("Stored {} bytes in {}", size, target_file))
+        Ok(format!("Stored {} bytes in {}", buffer.len(), target_file))
     }
 }
 
