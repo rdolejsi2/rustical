@@ -7,22 +7,24 @@ mod stream_handler;
 mod command;
 mod config;
 mod file;
+mod server_error;
 
-use stream_handler::handle_stream;
+use anyhow::{Context, Result};
 use common::cli::{parse_args, CliArg};
 use common::util::{ensure_directory, flush};
 use common::{elog, log};
 use config::Config;
 use std::net::TcpListener;
 use std::thread;
+use stream_handler::handle_stream;
 
-fn main() {
+fn main() -> Result<()> {
     #[rustfmt::skip]
     let args = [CliArg::Host, CliArg::Port, CliArg::FileDir, CliArg::ImageDir];
     let (host, port, file_dir, image_dir) = match parse_args("server", &args) {
         Ok(params) => {
             let [host, port, file_dir, image_dir]: [String; 4] =
-                params.try_into().expect("Incorrect param count");
+                params.try_into().context("Incorrect param count")?;
             (host, port, file_dir, image_dir)
         }
         Err(e) => {
@@ -40,13 +42,7 @@ fn main() {
 
     let address = format!("{}:{}", host, port);
     log!("Starting server on {}", address);
-    let listener = match TcpListener::bind(&address) {
-        Ok(listener) => listener,
-        Err(e) => {
-            elog!("Failed to bind to address {}: {}", address, e);
-            std::process::exit(1);
-        }
-    };
+    let listener = TcpListener::bind(&address).context("Failed to bind to address")?;
 
     for stream in listener.incoming() {
         match stream {
@@ -72,4 +68,5 @@ fn main() {
             }
         }
     }
+    Ok(())
 }

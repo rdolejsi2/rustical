@@ -1,6 +1,6 @@
 pub mod cli;
 pub mod util;
-
+pub mod message;
 // all macros (exported at library level, hence not in a specific module)
 
 #[macro_export]

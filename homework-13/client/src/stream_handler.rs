@@ -5,7 +5,7 @@
 use crate::command::{handle_command, print_commands};
 use common::util::flush;
 use common::{elog, log};
-use std::io::stdin;
+use std::io::{stdin, Write};
 use std::net::TcpStream;
 
 pub(crate) fn handle_stream(stream: &mut TcpStream) {
@@ -20,20 +20,18 @@ pub(crate) fn handle_stream(stream: &mut TcpStream) {
             Ok(_) => {
                 let input = buffer.trim_end().to_string();
                 match input.as_str().trim() {
-                    "" => {
-                        continue;
-                    }
-                    ".quit" => {
-                        break;
-                    }
+                    "" => continue,
+                    ".quit" => break,
                     _ => {
-                        let result = handle_command(stream, &input);
-                        match result {
+                        match handle_command(&input) {
                             Ok(response) => {
-                                log!("Server: {}", response);
+                                if let Err(e) = writeln!(stream, "{:?}", response) {
+                                    elog!("Error writing to stream: {}", e);
+                                    break;
+                                }
                             }
                             Err(e) => {
-                                elog!("Error handling command: {}", e);
+                                elog!("Error: {}", e);
                                 break;
                             }
                         }
