@@ -1,0 +1,10 @@
+# Build and IDE directories
+.idea
+target/
+
+# Backup files
+*~
+
+# Ignore server runtime storage directories
+/files
+/images
