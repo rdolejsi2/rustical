@@ -2,57 +2,67 @@
 //!
 //! The module handles all commands (including a declarative help for all of them).
 
+//! Command handling for the server.
+//!
+//! The module handles all commands (including a declarative help for all of them).
+
 use crate::config::Config;
 use crate::file::{post_process_image, store_file};
-use crate::server_error::ServerError;
-use common::message::{ClientServerMessage, ServerClientMessage};
+use common::message::{ClientServerMessage, Payload, ServerClientMessage};
+use common::{log, util};
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::error::Error;
+use util::flush;
 
 struct Command {
     pub description: String,
-    pub params: &'static [&'static str],
-    pub func: fn(
-        &ClientServerMessage,
-        &[&str],
-        &Config,
-    ) -> Result<ServerClientMessage, Box<dyn Error>>,
+    pub func: fn(&ClientServerMessage, &Config) -> Result<ServerClientMessage, Box<dyn Error>>,
 }
 
 lazy_static! {
     static ref COMMANDS: HashMap<&'static str, Command> = {
         let functions = [
             (
-                "help",
+                "Help",
                 Command {
                     description: "Lists all commands".to_string(),
-                    params: &[],
                     func: help,
                 },
             ),
             (
-                "file",
+                "Info",
+                Command {
+                    description: "Logs an info text on server side".to_string(),
+                    func: info,
+                },
+            ),
+            (
+                "Msg",
+                Command {
+                    description: "Sends a message".to_string(),
+                    func: msg,
+                },
+            ),
+            (
+                "File",
                 Command {
                     description: "Stores a generic file".to_string(),
-                    params: &["name", "checksum_type", "checksum", "content"],
                     func: file,
                 },
             ),
             (
-                "image",
+                "Image",
                 Command {
                     description: "Stores an image file".to_string(),
-                    params: &["name", "checksum_type", "checksum", "content"],
                     func: image,
                 },
             ),
             (
-                "info",
+                "Quit",
                 Command {
-                    description: "Logs an info text on server side".to_string(),
-                    params: &[],
-                    func: info,
+                    description: "Finalizes the communication, closes the stream".to_string(),
+                    func: quit,
                 },
             ),
         ];
@@ -62,90 +72,120 @@ lazy_static! {
 
 fn help(
     message: &ClientServerMessage,
-    params: &[&str],
     _config: &Config,
 ) -> Result<ServerClientMessage, Box<dyn Error>> {
-    _ = get_message_params(message, params)?;
     let commands = COMMANDS
         .iter()
         .map(|(name, command)| format!("  {}: {}", name, command.description))
         .collect::<Vec<_>>()
         .join("\n");
     let text = format!("Available commands:\n{}", commands);
-    Ok(ServerClientMessage {
+    Ok(ServerClientMessage::Ok {
         msg_id_ref: message.msg_id.to_string(),
-        code: "Ok".into(),
         text: Some(text),
     })
 }
 
 fn info(
     message: &ClientServerMessage,
-    params: &[&str],
     _config: &Config,
 ) -> Result<ServerClientMessage, Box<dyn Error>> {
-    _ = get_message_params(message, params)?;
-    Ok(ServerClientMessage {
-        msg_id_ref: message.msg_id.to_string(),
-        code: "Ok".into(),
-        text: Some(format!("Info received: {:?}", message)),
-    })
+    match &message.payload {
+        Some(Payload::Info { info, hostname }) => {
+            log!(
+                "Information received from client on hostname {}: {}",
+                hostname,
+                info
+            );
+            Ok(ServerClientMessage::Ok {
+                msg_id_ref: message.msg_id.to_string(),
+                text: Some(format!("Info received: {}", info)),
+            })
+        }
+        _ => Err(format!("Invalid message type: {}", message).into()),
+    }
+}
+
+fn msg(
+    message: &ClientServerMessage,
+    _config: &Config,
+) -> Result<ServerClientMessage, Box<dyn Error>> {
+    match &message.payload {
+        Some(Payload::Msg { text }) => {
+            log!("Message received from client: {}", text);
+            Ok(ServerClientMessage::Ok {
+                msg_id_ref: message.msg_id.to_string(),
+                text: Some(format!("Message received: {}", text)),
+            })
+        }
+        _ => Err(format!("Invalid message type: {}", message).into()),
+    }
 }
 
 fn file(
     message: &ClientServerMessage,
-    params: &[&str],
     config: &Config,
 ) -> Result<ServerClientMessage, Box<dyn Error>> {
-    let [filename, content]: [&str; 2] = get_message_params(message, params)?;
-    store_file(&filename, &content, &config.file_dir, None)?;
-    Ok(ServerClientMessage {
-        msg_id_ref: message.msg_id.to_string(),
-        code: "Ok".into(),
-        text: None,
-    })
+    match &message.payload {
+        Some(Payload::File { filename, content }) => {
+            let result = store_file(&filename, &config.file_dir, &content, None)?;
+            Ok(ServerClientMessage::Ok {
+                msg_id_ref: message.msg_id.to_string(),
+                text: Some(result),
+            })
+        }
+        _ => Err(format!("Invalid message type: {}", message).into()),
+    }
 }
 
 fn image(
     message: &ClientServerMessage,
-    params: &[&str],
     config: &Config,
 ) -> Result<ServerClientMessage, Box<dyn Error>> {
-    let [filename, content]: [&str; 2] = get_message_params(message, params)?;
-    store_file(&filename, &content, &config.image_dir, Some(post_process_image))?;
-    Ok(ServerClientMessage {
-        msg_id_ref: message.msg_id.to_string(),
-        code: "Ok".into(),
-        text: None,
-    })
+    match &message.payload {
+        Some(Payload::Image { filename, content }) => {
+            let result = store_file(
+                &filename,
+                &config.image_dir,
+                &content,
+                Some(post_process_image),
+            )?;
+            Ok(ServerClientMessage::Ok {
+                msg_id_ref: message.msg_id.to_string(),
+                text: Some(result),
+            })
+        }
+        _ => Err(format!("Invalid message type: {}", message).into()),
+    }
 }
 
-fn get_message_params<const N: usize>(
+fn quit(
     message: &ClientServerMessage,
-    params: &[&str],
-) -> Result<[&'static str; N], Box<dyn Error>> {
-    params
-        .iter()
-        .map(|&param| {
-            message
-                .payload
-                .as_ref()
-                .and_then(|payload| payload.get(param))
-                .ok_or_else(|| ServerError::InvalidParameter(param.to_string()).into())
-        })
-        .collect::<Result<Vec<_>, _>>()?
-        .try_into()
-        .map_err(|_| ServerError::InvalidParameter("Parameter conversion error".into()).into())
+    _config: &Config,
+) -> Result<ServerClientMessage, Box<dyn Error>> {
+    Ok(ServerClientMessage::Quit {
+        msg_id_ref: message.msg_id.to_string(),
+        text: Some("Hasta la vista".to_string()),
+    })
 }
 
 pub(crate) fn handle_command(
     message: &ClientServerMessage,
     config: &Config,
 ) -> Result<ServerClientMessage, Box<dyn Error>> {
-    if let Some(command) = COMMANDS.get(message.command.as_str()) {
-        (command.func)(message, command.params, config)
+    if let Some(payload) = &message.payload {
+        let command_name = payload.variant_name();
+        if let Some(command_spec) = COMMANDS.get(command_name) {
+            (command_spec.func)(message, config)
+        } else {
+            let commands = COMMANDS.keys().collect::<Vec<_>>();
+            Err(format!(
+                "Invalid command {}, valid are: {:?}",
+                command_name, commands
+            )
+            .into())
+        }
     } else {
-        let commands = COMMANDS.keys().collect::<Vec<_>>();
-        Err(format!("Invalid command {}, valid are: {:?}", message.command, commands).into())
+        Err("No payload found in message".into())
     }
 }

@@ -4,11 +4,9 @@
 //! (file name deduction, receiving files, post-processing images).
 
 use crate::server_error::ServerError;
-use base64::engine::general_purpose::STANDARD as BASE64;
-use base64::Engine;
 use chrono::{SecondsFormat, Utc};
 use common::log;
-use common::util::flush;
+use common::util::{base64_decode, flush};
 use image::{ImageFormat, ImageReader};
 use regex::Regex;
 use std::error::Error;
@@ -38,33 +36,35 @@ pub(crate) fn store_file(
     content: &str,
     post_processor: Option<fn(&[u8], &str) -> Result<(Vec<u8>, String, bool), Box<dyn Error>>>,
 ) -> Result<String, Box<dyn Error>> {
-    let buffer = BASE64
-        .decode(content)
-        .map_err(|e| ServerError::InvalidEncoding(e.to_string()))?;
+    let buffer = base64_decode(content)
+        .map_err(|e| ServerError::InvalidEncoding("Decoding failed".into(), Some(Box::new(e))))?;
     let target_file = get_target_file(filename, directory)?;
     if let Some(processor) = post_processor {
         let (target_buffer, new_target_file, converted) = processor(&buffer, &target_file)?;
         let mut target_file = File::create(new_target_file.clone())?;
         target_file.write_all(&target_buffer)?;
-        if converted {
-            let new_size = target_buffer.len();
-            Ok(format!(
+        let msg = if converted {
+            format!(
                 "Received {} bytes and converted to {} bytes in {}",
                 buffer.len(),
-                new_size,
+                target_buffer.len(),
                 new_target_file
-            ))
+            )
         } else {
-            Ok(format!(
+            format!(
                 "Stored {} bytes in {}",
                 buffer.len(),
                 new_target_file
-            ))
-        }
+            )
+        };
+        log!("{}", msg);
+        Ok(msg)
     } else {
         let mut file = File::create(target_file.clone())?;
         file.write_all(&buffer)?;
-        Ok(format!("Stored {} bytes in {}", buffer.len(), target_file))
+        let msg = format!("Stored {} bytes in {}", buffer.len(), target_file);
+        log!("{}", msg);
+        Ok(msg)
     }
 }
 
@@ -72,32 +72,42 @@ pub(crate) fn post_process_image(
     buffer: &[u8],
     target_file: &str,
 ) -> Result<(Vec<u8>, String, bool), Box<dyn Error>> {
-    let img = match ImageReader::new(Cursor::new(buffer))
+    let img = ImageReader::new(Cursor::new(buffer))
         .with_guessed_format()?
         .decode()
-    {
-        Ok(img) => img,
-        Err(_) => return Err("Failed to decode image".into()),
-    };
+        .or_else(|e| {
+            Err(ServerError::ImageProcessingFailed(
+                "Failed to decode image".into(),
+                Some(Box::new(e)),
+            ))
+        })?;
 
     let format = ImageReader::new(Cursor::new(buffer))
         .with_guessed_format()?
-        .format()
-        .ok_or("Unknown image format")?;
+        .format();
 
-    if format == ImageFormat::Png {
-        return Ok((buffer.to_vec(), target_file.to_string(), false));
+    match format {
+        None => {
+            Err(Box::new(ServerError::ImageProcessingFailed(
+                "Unknown image format".into(),
+                None,
+            )))
+        }
+        Some(ImageFormat::Png) => {
+            Ok((buffer.to_vec(), target_file.to_string(), false))
+        }
+        Some(format) => {
+            log!("Converting from {:?}", format);
+
+            let png_target_file = target_file.rsplit_once('.').map_or_else(
+                || format!("{}.png", target_file),
+                |(base, _)| format!("{}.png", base),
+            );
+
+            let mut png_buffer = Vec::new();
+            img.write_to(&mut Cursor::new(&mut png_buffer), ImageFormat::Png)?;
+
+            Ok((png_buffer, png_target_file, true))
+        }
     }
-
-    log!("Converting from {:?}", format);
-
-    let png_target_file = target_file.rsplit_once('.').map_or_else(
-        || format!("{}.png", target_file),
-        |(base, _)| format!("{}.png", base),
-    );
-
-    let mut png_buffer = Vec::new();
-    img.write_to(&mut Cursor::new(&mut png_buffer), ImageFormat::Png)?;
-
-    Ok((png_buffer, png_target_file, true))
 }

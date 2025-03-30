@@ -14,12 +14,12 @@ const PORT_DEFAULT: &'static str = "11111";
 const FILE_DIRECTORY_DEFAULT: &'static str = "files";
 const IMAGE_DIRECTORY_DEFAULT: &'static str = "images";
 
-
 pub enum CliArg {
     Host,
     Port,
     FileDir,
     ImageDir,
+    Debug,
 }
 
 impl CliArg {
@@ -45,6 +45,14 @@ impl CliArg {
                 .long("image-dir")
                 .default_value(IMAGE_DIRECTORY_DEFAULT)
                 .help("Sets the image directory"),
+            CliArg::Debug => Arg::new("debug")
+                .short('d')
+                .long("debug")
+                .default_value("false")
+                .help("Enables debug mode")
+                .action(clap::ArgAction::Set)
+                .default_missing_value("true")
+                .num_args(0),
         }
     }
 
@@ -54,6 +62,7 @@ impl CliArg {
             CliArg::Port => matches.get_one::<String>("port"),
             CliArg::FileDir => matches.get_one::<String>("file-dir"),
             CliArg::ImageDir => matches.get_one::<String>("image-dir"),
+            CliArg::Debug => matches.get_one::<String>("debug"),
         };
         result
             .map(|s| Ok(s.clone()))

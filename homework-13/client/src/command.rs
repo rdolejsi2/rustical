@@ -2,20 +2,17 @@
 //!
 //! The module handles all commands (including a declarative help for all of them).
 
-use common::{log, util};
+use crate::client_error::ClientError;
 use common::message::{ClientServerMessage, Payload};
-use common::util::flush;
-use base64::engine::general_purpose::STANDARD as BASE64;
-use base64::Engine;
+use common::util::{base64_decode, base64_encode, flush};
+use common::{log, util};
 use lazy_static::lazy_static;
 use std::collections::HashMap;
-use std::error::Error;
-use base64::encode;
 use std::fs::File;
 use std::io::Read;
 
 pub struct Command {
-    pub func: Option<fn(&str) -> Result<ClientServerMessage, Box<dyn Error>>>,
+    pub func: Option<fn(&str) -> Result<ClientServerMessage, ClientError>>,
     pub description: String,
 }
 
@@ -23,77 +20,85 @@ lazy_static! {
     static ref CLIENT_COMMANDS: HashMap<&'static str, Command> = {
         #[rustfmt::skip]
         let functions = [
+            (".info", Command { func: Some(info), description: "Sends an info text about the client to the server".to_string() }),
             (".msg", Command { func: Some(msg), description: "Sends a message".to_string() }),
             (".file", Command { func: Some(file), description: "Sends a file for storing into files/".to_string() }),
             (".image", Command { func: Some(image), description: "Sends an image for storing into images/".to_string() }),
-            (".info", Command { func: Some(info), description: "Sends an info text about the client to the server".to_string() }),
             (".help", Command { func: Some(help), description: "Prints help from the server (supported commands)".to_string() }),
-            (".quit", Command { func: None, description: "Terminates the client".to_string() }),
+            (".quit", Command { func: Some(quit), description: "Terminates the client".to_string() }),
         ];
         functions.into_iter().collect()
     };
 }
 
-fn msg(input: &str) -> Result<ClientServerMessage, Box<dyn Error>> {
+fn info(input: &str) -> Result<ClientServerMessage, ClientError> {
+    let hostname = util::get_hostname().unwrap_or("unknown".to_string());
     Ok(ClientServerMessage {
         msg_id: uuid::Uuid::new_v4().to_string(),
-        command: "msg".into(),
-        payload: Some(Payload::Message {
+        payload: Some(Payload::Info {
+            info: format!("{input}", input = input),
+            hostname,
+        }),
+    })
+}
+
+fn msg(input: &str) -> Result<ClientServerMessage, ClientError> {
+    Ok(ClientServerMessage {
+        msg_id: uuid::Uuid::new_v4().to_string(),
+        payload: Some(Payload::Msg {
             text: input.to_string(),
         }),
     })
 }
 
-fn info(input: &str) -> Result<ClientServerMessage, Box<dyn Error>> {
-    Ok(ClientServerMessage {
-        msg_id: uuid::Uuid::new_v4().to_string(),
-        command: "info".into(),
-        payload: Some(Payload::Message {
-            text: format!("Client is hailing from {hostname}: {input}", hostname = util::get_hostname().unwrap_or("unknown".to_string()), input = input),
-        }),
-    })
-}
-
-fn help(input: &str) -> Result<ClientServerMessage, Box<dyn Error>> {
+fn help(input: &str) -> Result<ClientServerMessage, ClientError> {
     if !input.is_empty() {
-        return Err("Command '.help' has no arguments".into());
+        return Err(ClientError::InvalidParameter(
+            "Command '.help' has no arguments".into(),
+        ));
     }
     Ok(ClientServerMessage {
         msg_id: uuid::Uuid::new_v4().to_string(),
-        command: "help".into(),
-        payload: None,
+        payload: Some(Payload::Help {}),
     })
 }
 
-fn file(input: &str) -> Result<ClientServerMessage, Box<dyn Error>> {
-    let mut file = File::open(input)?;
+fn file(input: &str) -> Result<ClientServerMessage, ClientError> {
+    let mut file = File::open(input).map_err(|e| ClientError::GeneralIssue(e.to_string()))?;
     let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer)?;
-    let content_base64 = encode(&buffer);
+    file.read_to_end(&mut buffer)
+        .map_err(|e| ClientError::GeneralIssue(e.to_string()))?;
+    let content_base64 = base64_encode(&buffer);
 
     Ok(ClientServerMessage {
         msg_id: uuid::Uuid::new_v4().to_string(),
-        command: "file".into(),
         payload: Some(Payload::File {
             filename: input.to_string(),
-            content: content_base64.into_bytes(),
+            content: content_base64,
         }),
     })
 }
 
-fn image(input: &str) -> Result<ClientServerMessage, Box<dyn Error>> {
-    let mut file = File::open(input)?;
+fn image(input: &str) -> Result<ClientServerMessage, ClientError> {
+    let mut file = File::open(input).map_err(|e| ClientError::GeneralIssue(e.to_string()))?;
     let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer)?;
-    let content_base64 = encode(&buffer);
+    file.read_to_end(&mut buffer)
+        .map_err(|e| ClientError::GeneralIssue(e.to_string()))?;
+    let content_base64 = base64_encode(&buffer);
 
     Ok(ClientServerMessage {
         msg_id: uuid::Uuid::new_v4().to_string(),
-        command: "image".into(),
         payload: Some(Payload::Image {
             filename: input.to_string(),
-            content: content_base64.into_bytes(),
+            content: content_base64,
         }),
+    })
+}
+
+fn quit(_input: &str) -> Result<ClientServerMessage, ClientError> {
+    Ok(ClientServerMessage {
+        msg_id: uuid::Uuid::new_v4().to_string(),
+        payload: Some(Payload::Quit {}),
     })
 }
 
@@ -112,14 +117,14 @@ pub(crate) fn print_commands() {
     }
 }
 
-pub(crate) fn handle_command(input: &str) -> Result<ClientServerMessage, Box<dyn Error>> {
+pub(crate) fn handle_command(input: &str) -> Result<ClientServerMessage, ClientError> {
     let (command, input) = if !input.starts_with('.') {
         (".msg", input)
     } else {
         let mut parts = input.splitn(2, ' ');
         match parts.next() {
             Some(cmd) => (cmd, parts.next().unwrap_or("")),
-            None => return Err("Failed to parse command".into()),
+            None => return Err(ClientError::GeneralIssue("Failed to parse command".into())),
         }
     };
 
@@ -127,10 +132,15 @@ pub(crate) fn handle_command(input: &str) -> Result<ClientServerMessage, Box<dyn
         if let Some(func) = command_spec.func {
             func(input)
         } else {
-            Err("Command '.quit' is not handled".into())
+            Err(ClientError::GeneralIssue(
+                format!("Command {} is not registered for handling", command).into(),
+            ))
         }
     } else {
         let commands = CLIENT_COMMANDS.keys().collect::<Vec<_>>();
-        Err(format!("Invalid command '{}', valid are: {:?}", command, commands).into())
+        Err(ClientError::InvalidParameter(format!(
+            "Invalid command '{}', valid are: {:?}",
+            command, commands
+        )))
     }
 }

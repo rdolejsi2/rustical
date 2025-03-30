@@ -7,4 +7,5 @@
 pub struct Config {
     pub(crate) file_dir: String,
     pub(crate) image_dir: String,
+    pub(crate) debug: String,
 }

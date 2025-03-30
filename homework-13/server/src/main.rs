@@ -20,12 +20,12 @@ use stream_handler::handle_stream;
 
 fn main() -> Result<()> {
     #[rustfmt::skip]
-    let args = [CliArg::Host, CliArg::Port, CliArg::FileDir, CliArg::ImageDir];
-    let (host, port, file_dir, image_dir) = match parse_args("server", &args) {
+    let args = [CliArg::Host, CliArg::Port, CliArg::FileDir, CliArg::ImageDir, CliArg::Debug];
+    let (host, port, file_dir, image_dir, debug) = match parse_args("server", &args) {
         Ok(params) => {
-            let [host, port, file_dir, image_dir]: [String; 4] =
-                params.try_into().context("Incorrect param count")?;
-            (host, port, file_dir, image_dir)
+            let [host, port, file_dir, image_dir, debug]: [String; 5] =
+                params.try_into().map_err(|e: Vec<String>| anyhow::anyhow!(format!("{:?}", e))).context("Incorrect param count")?;
+            (host, port, file_dir, image_dir, debug)
         }
         Err(e) => {
             elog!("Error parsing arguments: {}", e);
@@ -38,6 +38,7 @@ fn main() -> Result<()> {
     let config = Config {
         file_dir,
         image_dir,
+        debug,
     };
 
     let address = format!("{}:{}", host, port);
