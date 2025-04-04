@@ -1,5 +1,8 @@
 use thiserror::Error;
 
+/// Custom error type for the client application.
+/// This error type is used to represent various errors
+/// that can occur during the execution of the client.
 #[derive(Error, Debug)]
 pub enum ClientError {
     #[error("Command error: {0}")]

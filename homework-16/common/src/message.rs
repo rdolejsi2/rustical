@@ -1,3 +1,9 @@
+//! This module defines the message structures used for communication between the client and server.
+//! It includes the `ClientServerMessage` and `ServerClientMessage` structs.
+//
+//! All possible message types are defined in the `Payload` enum. This limits the extensibility
+//! of the message types, but ensures that all possible messages are known at compile time
+//! and are thus known to be handled by both client and server.
 use common_proc_macro::EnumVariantName;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -10,6 +16,8 @@ pub trait JsonParser {
         Self: Sized;
 }
 
+/// Represents a message sent from the client to the server.
+/// It contains a unique message ID and a payload.
 #[derive(Serialize, Deserialize)]
 pub struct ClientServerMessage {
     pub msg_id: String,
@@ -37,6 +45,8 @@ impl JsonParser for ClientServerMessage {
     }
 }
 
+/// Represents the payload of a client-to-server message,
+/// carrying different commands and their associated data.
 #[derive(Serialize, Deserialize, Debug, EnumVariantName)]
 #[serde(tag = "type", content = "data")]
 pub enum Payload {
@@ -58,6 +68,9 @@ impl Payload {
     }
 }
 
+/// Represents a message sent from the server to the client.
+/// It contains a unique message ID reference pointing to the originating client message
+/// and a status code / text if available.
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type", content = "data")]
 pub enum ServerClientMessage {
@@ -86,16 +99,26 @@ impl fmt::Display for ServerClientMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ServerClientMessage::Ok { text, .. } => {
-                let text_str = text.as_deref().map_or(String::new(), |t| format!(": {}", t));
+                let text_str = text
+                    .as_deref()
+                    .map_or(String::new(), |t| format!(": {}", t));
                 write!(f, "Ok{}", text_str)
             }
             ServerClientMessage::Error { code, text, .. } => {
-                let code_str = if code.is_empty() { String::new() } else { format!("[{}]", code) };
-                let text_str = text.as_deref().map_or(String::new(), |t| format!(": {}", t));
+                let code_str = if code.is_empty() {
+                    String::new()
+                } else {
+                    format!("[{}]", code)
+                };
+                let text_str = text
+                    .as_deref()
+                    .map_or(String::new(), |t| format!(": {}", t));
                 write!(f, "Error{}{}", code_str, text_str)
             }
             ServerClientMessage::Quit { text, .. } => {
-                let text_str = text.as_deref().map_or(String::new(), |t| format!(": {}", t));
+                let text_str = text
+                    .as_deref()
+                    .map_or(String::new(), |t| format!(": {}", t));
                 write!(f, "Quit{}", text_str)
             }
         }

@@ -4,19 +4,24 @@
 
 use crate::client_error::ClientError;
 use common::message::{ClientServerMessage, Payload};
-use common::util::{base64_decode, base64_encode, flush};
+use common::util::{base64_encode, flush};
 use common::{log, util};
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 
+/// Command handling for the client.
+/// Each command is handled by a separate function.
 pub struct Command {
     pub func: Option<fn(&str) -> Result<ClientServerMessage, ClientError>>,
     pub description: String,
 }
 
 lazy_static! {
+    /// A map of all client commands.
+    /// The keys are the command names (e.g., ".info", ".msg"),
+    /// and the values are the corresponding Command structs.
     static ref CLIENT_COMMANDS: HashMap<&'static str, Command> = {
         #[rustfmt::skip]
         let functions = [
@@ -31,6 +36,7 @@ lazy_static! {
     };
 }
 
+/// Sends info to the server.
 fn info(input: &str) -> Result<ClientServerMessage, ClientError> {
     let hostname = util::get_hostname().unwrap_or("unknown".to_string());
     Ok(ClientServerMessage {
@@ -42,6 +48,7 @@ fn info(input: &str) -> Result<ClientServerMessage, ClientError> {
     })
 }
 
+/// Sends a message to the server.
 fn msg(input: &str) -> Result<ClientServerMessage, ClientError> {
     Ok(ClientServerMessage {
         msg_id: uuid::Uuid::new_v4().to_string(),
@@ -51,6 +58,7 @@ fn msg(input: &str) -> Result<ClientServerMessage, ClientError> {
     })
 }
 
+/// Sends a help request to the server.
 fn help(input: &str) -> Result<ClientServerMessage, ClientError> {
     if !input.is_empty() {
         return Err(ClientError::InvalidParameter(
@@ -63,6 +71,7 @@ fn help(input: &str) -> Result<ClientServerMessage, ClientError> {
     })
 }
 
+/// Sends a file to the server.
 fn file(input: &str) -> Result<ClientServerMessage, ClientError> {
     let mut file = File::open(input).map_err(|e| ClientError::GeneralIssue(e.to_string()))?;
     let mut buffer = Vec::new();
@@ -79,6 +88,8 @@ fn file(input: &str) -> Result<ClientServerMessage, ClientError> {
     })
 }
 
+/// Sends an image to the server.
+/// This feature is the same as file, but might be handled slightly differently on the server side.
 fn image(input: &str) -> Result<ClientServerMessage, ClientError> {
     let mut file = File::open(input).map_err(|e| ClientError::GeneralIssue(e.to_string()))?;
     let mut buffer = Vec::new();
@@ -95,6 +106,7 @@ fn image(input: &str) -> Result<ClientServerMessage, ClientError> {
     })
 }
 
+/// Terminates the client (while indicating the termination to the server as well beforehand).
 fn quit(_input: &str) -> Result<ClientServerMessage, ClientError> {
     Ok(ClientServerMessage {
         msg_id: uuid::Uuid::new_v4().to_string(),
@@ -102,6 +114,7 @@ fn quit(_input: &str) -> Result<ClientServerMessage, ClientError> {
     })
 }
 
+/// Prints all available commands to the console.
 pub(crate) fn print_commands() {
     log!("Available commands:");
     let max_command_len = CLIENT_COMMANDS.keys().map(|k| k.len()).max().unwrap();
@@ -117,6 +130,8 @@ pub(crate) fn print_commands() {
     }
 }
 
+/// Handles a command from the user input.
+/// Commands are resolved from the [CLIENT_COMMANDS](CLIENT_COMMANDS) map.
 pub(crate) fn handle_command(input: &str) -> Result<ClientServerMessage, ClientError> {
     let (command, input) = if !input.starts_with('.') {
         (".msg", input)

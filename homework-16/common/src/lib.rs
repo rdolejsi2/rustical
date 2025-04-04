@@ -1,8 +1,14 @@
+//! Common library for the project
+//!
+//! This library contains common code that is used by all other libraries in the project.
+//! Any pre-determined defaults shared between client and server are part of this library as well.
 pub mod cli;
-pub mod util;
 pub mod message;
+pub mod util;
+mod test;
 // all macros (exported at library level, hence not in a specific module)
 
+/// Prints a message to the standard output stream and flushes it.
 #[macro_export]
 macro_rules! log {
     ($($arg:tt)*) => {
@@ -12,6 +18,7 @@ macro_rules! log {
     };
 }
 
+/// Prints an error message to the standard error stream and flushes it.
 #[macro_export]
 macro_rules! elog {
     ($($arg:tt)*) => {
@@ -21,6 +28,7 @@ macro_rules! elog {
     };
 }
 
+/// Prints a message to the standard output stream and writes it to the provided stream.
 #[macro_export]
 macro_rules! stream {
     ($stream:expr, $($arg:tt)*) => {
@@ -33,6 +41,7 @@ macro_rules! stream {
     };
 }
 
+/// Prints an error message to the standard error stream and writes it to the provided stream.
 #[macro_export]
 macro_rules! estream {
     ($stream:expr, $($arg:tt)*) => {

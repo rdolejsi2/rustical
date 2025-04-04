@@ -14,6 +14,8 @@ use serde_json::from_slice;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
+/// Receives an inbound message from the client.
+/// The message is expected to be in JSON format, with a length prefix to help the deserialization.
 fn receive_message(
     stream: &mut TcpStream,
     debug: bool,
@@ -42,6 +44,8 @@ fn receive_message(
     Ok(message)
 }
 
+/// Sends a response back to the client.
+/// The response is serialized into JSON format and sent with a length prefix.
 fn send_response(
     stream: &mut TcpStream,
     response: &ServerClientMessage,
@@ -69,6 +73,8 @@ fn send_response(
     Ok(())
 }
 
+/// Handles the communication with the client (in a specific thread, irrespective of other clients).
+/// The code is also responsible for graceful shutdown of the stream on `quit` command.
 pub fn handle_stream(stream: &mut TcpStream, config: &Config) {
     log!("Connected client from {}", stream.peer_addr().unwrap());
     let debug: bool = config.debug.parse().unwrap_or(false);

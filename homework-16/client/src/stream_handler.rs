@@ -4,14 +4,17 @@
 
 use crate::client_error::ClientError;
 use crate::command::{handle_command, print_commands};
+use common::log;
 use common::message::ServerClientMessage;
 use common::util::flush;
-use common::log;
 use serde_json::from_slice;
 use std::io;
 use std::io::{BufRead, Read, Write};
 use std::net::TcpStream;
 
+/// Receives a response from the server, either positive or negative.
+/// The response text (or code and text for errors) is deserialized into
+/// the respective [ServerClientMessage](ServerClientMessage) struct.
 fn receive_response(stream: &mut TcpStream) -> Result<ServerClientMessage, ClientError> {
     let mut length_buffer = [0; 4];
     stream.read_exact(&mut length_buffer).map_err(|e| {
@@ -29,6 +32,10 @@ fn receive_response(stream: &mut TcpStream) -> Result<ServerClientMessage, Clien
     Ok(response)
 }
 
+/// Fully handles the communication stream with the server.
+///
+/// It reads user input, processes commands, and sends requests to the server,
+/// reacts on the received responses.
 pub(crate) fn handle_stream(stream: &mut TcpStream, debug: bool) -> Result<(), ClientError> {
     log!("Connected to server, please input '.<cmd> <param>' (Ctrl+D or 'exit' to finish):");
     print_commands();
@@ -49,43 +56,60 @@ pub(crate) fn handle_stream(stream: &mut TcpStream, debug: bool) -> Result<(), C
         }
 
         match handle_command(&input) {
-            Ok(request) => {
-                match serde_json::to_string(&request) {
-                    Ok(serialized) => {
-                        if debug {
-                            log!("Sending JSON: {}", serialized);
-                        }
-                        let length = serialized.len() as u32;
-                        if stream.write_all(&length.to_be_bytes()).is_err()
-                            || stream.write_all(serialized.as_bytes()).is_err()
-                            || stream.flush().is_err()
-                        {
-                            return Err(ClientError::StreamWriteError("Error writing to stream".into()));
-                        }
+            Ok(request) => match serde_json::to_string(&request) {
+                Ok(serialized) => {
+                    if debug {
+                        log!("Sending JSON: {}", serialized);
+                    }
+                    let length = serialized.len() as u32;
+                    if stream.write_all(&length.to_be_bytes()).is_err()
+                        || stream.write_all(serialized.as_bytes()).is_err()
+                        || stream.flush().is_err()
+                    {
+                        return Err(ClientError::StreamWriteError(
+                            "Error writing to stream".into(),
+                        ));
+                    }
 
-                        match receive_response(stream) {
-                            Ok(response) => {
-                                if debug {
-                                    log!("Received response: {:?}", response);
-                                }
-                                log!("{}", format!("{response}", response = response));
-                                if let ServerClientMessage::Quit { .. } = response {
-                                    break;
-                                }
+                    match receive_response(stream) {
+                        Ok(response) => {
+                            if debug {
+                                log!("Received response: {:?}", response);
                             }
-                            Err(e) => return Err(ClientError::ResponseError(format!("Error receiving response: {:?}", e))),
+                            log!("{}", format!("{response}", response = response));
+                            if let ServerClientMessage::Quit { .. } = response {
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            return Err(ClientError::ResponseError(format!(
+                                "Error receiving response: {:?}",
+                                e
+                            )))
                         }
                     }
-                    Err(e) => return Err(ClientError::RequestSerializationFailed(format!("Error serializing request: {:?}", e))),
                 }
+                Err(e) => {
+                    return Err(ClientError::RequestSerializationFailed(format!(
+                        "Error serializing request: {:?}",
+                        e
+                    )))
+                }
+            },
+            Err(e) => {
+                return Err(ClientError::CommandError(format!(
+                    "Error handling command: {:?}",
+                    e
+                )))
             }
-            Err(e) => return Err(ClientError::CommandError(format!("Error handling command: {:?}", e))),
         }
     }
 
     // Close the connection when quitting
     if stream.shutdown(std::net::Shutdown::Both).is_err() {
-        return Err(ClientError::StreamShutdownError("Error shutting down the connection".into()));
+        return Err(ClientError::StreamShutdownError(
+            "Error shutting down the connection".into(),
+        ));
     }
 
     Ok(())

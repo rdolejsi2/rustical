@@ -1,3 +1,5 @@
+///! Client application connecting to a simple TCP server.
+///! This client connects to a server, sends commands, and handles responses.
 mod command;
 mod stream_handler;
 mod client_error;
@@ -9,6 +11,9 @@ use std::net::TcpStream;
 use stream_handler::handle_stream;
 use crate::client_error::ClientError;
 
+/// Main entry point to the client application.
+/// It parses command line arguments, connects to a server.
+/// Stream handling is delegated to the (stream_handler)[stream_handler] module.
 fn main() {
     let args = [CliArg::Host, CliArg::Port, CliArg::Debug];
     let (host, port, debug) = match parse_args("client", &args) {

@@ -14,6 +14,7 @@ use std::fs::File;
 use std::io::{Cursor, Write};
 use std::path::Path;
 
+/// Generates a target file name based on the current timestamp and the original file name.
 fn get_target_file(filename: &str, directory: &str) -> Result<String, Box<dyn Error>> {
     let path = Path::new(filename);
     let filename = path.file_name().unwrap().to_str().unwrap();
@@ -30,6 +31,9 @@ fn get_target_file(filename: &str, directory: &str) -> Result<String, Box<dyn Er
     Ok(target_path.to_str().unwrap().to_string())
 }
 
+/// Stores a file on the server.
+///
+/// The file is stored in a predetermined directory, with a predetermined file name.
 pub(crate) fn store_file(
     filename: &str,
     directory: &str,
@@ -51,11 +55,7 @@ pub(crate) fn store_file(
                 new_target_file
             )
         } else {
-            format!(
-                "Stored {} bytes in {}",
-                buffer.len(),
-                new_target_file
-            )
+            format!("Stored {} bytes in {}", buffer.len(), new_target_file)
         };
         log!("{}", msg);
         Ok(msg)
@@ -68,6 +68,11 @@ pub(crate) fn store_file(
     }
 }
 
+/// Post-processes an image.
+///
+/// When storing a file on the server using an image command, an extra post-processing
+/// is performed to ensure we have the image in a supported format. For this reason,
+/// any image is converted to a PNG format.
 pub(crate) fn post_process_image(
     buffer: &[u8],
     target_file: &str,
@@ -87,15 +92,11 @@ pub(crate) fn post_process_image(
         .format();
 
     match format {
-        None => {
-            Err(Box::new(ServerError::ImageProcessingFailed(
-                "Unknown image format".into(),
-                None,
-            )))
-        }
-        Some(ImageFormat::Png) => {
-            Ok((buffer.to_vec(), target_file.to_string(), false))
-        }
+        None => Err(Box::new(ServerError::ImageProcessingFailed(
+            "Unknown image format".into(),
+            None,
+        ))),
+        Some(ImageFormat::Png) => Ok((buffer.to_vec(), target_file.to_string(), false)),
         Some(format) => {
             log!("Converting from {:?}", format);
 

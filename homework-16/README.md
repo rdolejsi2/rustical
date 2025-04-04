@@ -1,4 +1,4 @@
-# Chatee - Rust(ical) homework 11
+# Chatee - Rust(ical) homework 16
 
 This project implements a client-server chat application written in Rust as a homework for the Rust course.
 

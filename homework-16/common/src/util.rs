@@ -1,3 +1,4 @@
+//! Common utility functions for the project.
 use base64::{alphabet, engine::{self, general_purpose}, DecodeError, Engine as _};
 use hostname;
 use std::any::type_name;
@@ -7,17 +8,21 @@ use std::io::stdout;
 use std::io::Write;
 use std::path::Path;
 
+/// Both server and client use the same base64 encoding/decoding engine + same parameters.
 const BASE64_ENGINE: engine::GeneralPurpose =
     engine::GeneralPurpose::new(&alphabet::URL_SAFE, general_purpose::NO_PAD);
 
+/// Encodes the given data into a base64 string.
 pub fn base64_encode(data: &[u8]) -> String {
     BASE64_ENGINE.encode(data)
 }
 
+/// Decodes the given base64 string into a byte vector.
 pub fn base64_decode(data: &str) -> Result<Vec<u8>, DecodeError> {
     BASE64_ENGINE.decode(data)
 }
 
+/// Flushes the standard output stream.
 pub fn flush() {
     if let Err(e) = stdout().flush() {
         eprintln!("Error flushing stdout: {}", e);
@@ -25,6 +30,7 @@ pub fn flush() {
     }
 }
 
+/// Ensures that the specified directory exists.
 pub fn ensure_directory(directory: &String) {
     let files_dir = Path::new(directory);
     if !files_dir.exists() {
@@ -36,15 +42,7 @@ pub fn ensure_directory(directory: &String) {
     }
 }
 
-pub fn get_enum_variant_name<T>(_: &T) -> String {
-    let type_name = std::any::type_name::<T>();
-    type_name
-        .split("::")
-        .last()
-        .unwrap_or("Unknown")
-        .to_string()
-}
-
+/// Returns the hostname of the current machine.
 pub fn get_hostname() -> Result<String, Box<dyn Error>> {
     let hostname = hostname::get()?;
     Ok(hostname.to_string_lossy().into_owned())

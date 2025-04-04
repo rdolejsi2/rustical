@@ -1,13 +1,11 @@
 //! Server for the file sharing application.
-//!
-//! The server listens for incoming connections and processes them in separate threads.
-//! The handling of each connection is delegated to the `client_handler` module.
 
 mod stream_handler;
 mod command;
 mod config;
 mod file;
 mod server_error;
+mod test;
 
 use anyhow::{Context, Result};
 use common::cli::{parse_args, CliArg};
@@ -18,6 +16,11 @@ use std::net::TcpListener;
 use std::thread;
 use stream_handler::handle_stream;
 
+/// Main entry point to the server code accepting the command line parameters
+/// and starting the server on the specified port.
+///
+/// The server listens for incoming connections and processes them in separate threads.
+/// The handling of each connection is delegated to the [stream_handler](stream_handler) module.
 fn main() -> Result<()> {
     #[rustfmt::skip]
     let args = [CliArg::Host, CliArg::Port, CliArg::FileDir, CliArg::ImageDir, CliArg::Debug];

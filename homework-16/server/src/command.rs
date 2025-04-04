@@ -1,10 +1,4 @@
 //! Command handling for the server.
-//!
-//! The module handles all commands (including a declarative help for all of them).
-
-//! Command handling for the server.
-//!
-//! The module handles all commands (including a declarative help for all of them).
 
 use crate::config::Config;
 use crate::file::{post_process_image, store_file};
@@ -15,12 +9,18 @@ use std::collections::HashMap;
 use std::error::Error;
 use util::flush;
 
+/// Each command supported by the server comes with a description and the responsible function.
 struct Command {
     pub description: String,
     pub func: fn(&ClientServerMessage, &Config) -> Result<ServerClientMessage, Box<dyn Error>>,
 }
 
 lazy_static! {
+    /// Commands are dynamically looked up in a static map.
+    ///
+    /// While previous versions of the project also defined the set of parameters required
+    /// by each command, this is no longer necessary as the server deserializes the payload
+    /// into the appropriate type, which carries the parameters by itself.
     static ref COMMANDS: HashMap<&'static str, Command> = {
         let functions = [
             (
@@ -70,6 +70,7 @@ lazy_static! {
     };
 }
 
+/// Handles the help command.
 fn help(
     message: &ClientServerMessage,
     _config: &Config,
@@ -86,6 +87,10 @@ fn help(
     })
 }
 
+/// Handles the info command.
+///
+/// This command is meant as a generic information message, which will be broadcast to everyone
+/// in future versions of the project.
 fn info(
     message: &ClientServerMessage,
     _config: &Config,
@@ -106,6 +111,9 @@ fn info(
     }
 }
 
+/// Handles the message command.
+///
+/// This is just a simple message from the client to the server.
 fn msg(
     message: &ClientServerMessage,
     _config: &Config,
@@ -122,6 +130,9 @@ fn msg(
     }
 }
 
+/// Handles the file command.
+///
+/// This command is meant to store a generic file on the server.
 fn file(
     message: &ClientServerMessage,
     config: &Config,
@@ -138,6 +149,11 @@ fn file(
     }
 }
 
+/// Handles the image command.
+///
+/// This command is meant to store an image file on the server.
+/// Part of the image storing activities is also the image format detection
+/// and conversion to normalized format.
 fn image(
     message: &ClientServerMessage,
     config: &Config,
@@ -159,6 +175,9 @@ fn image(
     }
 }
 
+/// Handles the quit command.
+///
+/// This command is meant to finalize the communication with the server.
 fn quit(
     message: &ClientServerMessage,
     _config: &Config,
@@ -169,6 +188,8 @@ fn quit(
     })
 }
 
+/// Handles the command received from the client
+/// and delegates their execution to the respective function.
 pub(crate) fn handle_command(
     message: &ClientServerMessage,
     config: &Config,
