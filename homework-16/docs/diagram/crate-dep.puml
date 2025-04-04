@@ -1,0 +1,99 @@
+@startuml
+
+'!theme plain
+left to right direction
+'skinparam linetype ortho
+
+namespace "client\n//<<bin crate>>//" as client #EEEEFF {
+    class "main" as client_main {
+        +main()
+    }
+
+    class "**stream_handler**\n//<<module>>//" as client_stream_handler {
+        +handle_stream()
+    }
+
+    class "**command**\n//<<module>>//" as client_command {
+        -CLIENT_COMMANDS
+        ---
+        //<<commands>>//
+        +help()
+        +file()
+        +image()
+        +info()
+        ---
+        +handle_command()
+        +print_commands()
+        +send_command_with_content()
+        +send_file()
+        +receive_server_response()
+    }
+
+    client_stream_handler::handle_stream --> client_command::handle_command
+    client_main::run --> client_stream_handler::handle_stream
+
+}
+
+namespace "server\n//<<bin crate>>//" as server #EEEEFF {
+    class "main" as server_main {
+        +main()
+    }
+
+    class "**stream_handler**\n//<<module>>//" as server_stream_handler {
+        +handle_stream()
+    }
+
+    class "**command**\n//<<module>>//" as server_command {
+        *COMMANDS
+        ---
+        //<<commands>>//
+        +help()
+        +file()
+        +image()
+        +info()
+        ---
+        +handle_command()
+    }
+
+    server_stream_handler::handle_stream --> server_command::handle_command
+    server_main::run --> server_stream_handler::handle_stream
+}
+
+namespace "common\n//<<lib crate>>//" as common #FFEECC {
+    class "**lib**" as lib {
+        //<<macro>>//
+        +log!()
+        +elog!()
+        +stream!()
+        +estream!()
+    }
+
+    class "**util**\n//<<module>>//" as util {
+        +flush()
+        +ensure_directory()
+    }
+
+    class "**cli**\n//<<module>>//" as cli {
+        +parse_args()
+        +print_help()
+    }
+
+    enum CliArg {
+        -Host
+        -Port
+        -FileDir
+        -ImageDir
+    }
+
+    lib .. cli: <<module>>
+    lib .. util: <<module>>
+    cli .up CliArg: <<defines>>
+    lib -[hidden]down- cli
+}
+
+client -up-> common
+server -up-> common
+
+client -[hidden]left- server
+
+@enduml
